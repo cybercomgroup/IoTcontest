@@ -52,36 +52,38 @@ void setup()
 
   while ((!debugSerial) && (millis() < 10000));
 
+  
   debugSerial.begin(57600);
   loraSerial.begin(LoRaBee.getDefaultBaudRate());
 
   LoRaSetup();
-//
-//  debugSerial.print("devAddr: ");
-//  for (int i = 0; i < 4; i++)
-//  {
-//    debugSerial.print(devAddr[i], HEX);
-//  }
-//  debugSerial.println("");
-//  debugSerial.print("appSKey: ");
-//  for (int i = 0; i < 16; i++)
-//  {
-//    debugSerial.print(appSKey[i], HEX);
-//  }
-//  debugSerial.println("");
-//  debugSerial.print("nwkSkey: ");
-//  for (int i = 0; i < 16; i++)
-//  {
-//    debugSerial.print(nwkSKey[i], HEX);
-//  }
-//  debugSerial.println("");
+
+  debugSerial.print("devAddr: ");
+  for (int i = 0; i < 4; i++)
+  {
+    debugSerial.print(devAddr[i], HEX);
+  }
+  debugSerial.println("");
+  debugSerial.print("appSKey: ");
+  for (int i = 0; i < 16; i++)
+  {
+    debugSerial.print(appSKey[i], HEX);
+  }
+  debugSerial.println("");
+  debugSerial.print("nwkSkey: ");
+  for (int i = 0; i < 16; i++)
+  {
+    debugSerial.print(nwkSKey[i], HEX);
+  }
+  debugSerial.println("");
 
 
 }
 
 void LoRaSetup()
 {
-  LoRaBee.setDiag(loraSerial); // optional
+  LoRaBee.setDiag(debugSerial); // optional
+  loraSerial.println("radio set pwr 14");
   bool init = LoRaBee.initABP(loraSerial, devAddr, appSKey, nwkSKey, false);
   if (init)
   {
