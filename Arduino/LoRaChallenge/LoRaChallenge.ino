@@ -38,6 +38,13 @@ void BLUE()
   digitalWrite(LED_BLUE, LOW);
 }
 
+void WHITE()
+{
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_BLUE, LOW);
+}
+
 void ledOFF()
 {
   digitalWrite(LED_RED, HIGH);
@@ -45,14 +52,14 @@ void ledOFF()
   digitalWrite(LED_BLUE, HIGH);
 }
 
-void setup()
-{
+void setup() {
+  // Leds
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
-  //SM sensor
+  // sensors
   pinMode(SMDigital, INPUT);
-  
+
   ledOFF();
 
   while ((!debugSerial) && (millis() < 10000));
@@ -60,54 +67,17 @@ void setup()
   debugSerial.begin(57600);
   loraSerial.begin(LoRaBee.getDefaultBaudRate());
 
-  LoRaSetup();
-
-  debugSerial.print("devAddr: ");
-  for (int i = 0; i < 4; i++)
-  {
-    debugSerial.print(devAddr[i], HEX);
-  }
-  debugSerial.println("");
-  debugSerial.print("appSKey: ");
-  for (int i = 0; i < 16; i++)
-  {
-    debugSerial.print(appSKey[i], HEX);
-  }
-  debugSerial.println("");
-  debugSerial.print("nwkSkey: ");
-  for (int i = 0; i < 16; i++)
-  {
-    debugSerial.print(nwkSKey[i], HEX);
-  }
-  debugSerial.println("");
-
+  setupLoRa();
 
 }
 
-void LoRaSetup()
-{
-  LoRaBee.setDiag(debugSerial); // optional
-  loraSerial.println("radio set pwr 14");
-  bool init = LoRaBee.initABP(loraSerial, devAddr, appSKey, nwkSKey, false);
-  if (init)
-  {
-    debugSerial.println("Connection to the network was successful.");
-
-  }
-  else
-  {
-    debugSerial.println("Connection to the network failed!");
-  }
-}
-
-void loop()
-{
+void loop() {
   // Test
   debugSerial.print("isDry: ");
   debugSerial.println(isDry(), DEC);
   debugSerial.println("SM level: "+getSMLevel());
   debugSerial.println("Water level: "+getWaterLevel());
-  
+
   String reading = getTemperature();
   switch (LoRaBee.send(1, (uint8_t*)reading.c_str(), reading.length())) //switch (LoRaBee.send(1, testPayload, 2))
   {
@@ -118,7 +88,7 @@ void loop()
   case NoResponse:
     debugSerial.println("There was no response from the device.");
     RED();
-    LoRaSetup();
+    setupLoRa();
     break;
   case Timeout:
     debugSerial.println("Connection timed-out. Check your serial connection to the device! Sleeping for 20sec.");
@@ -132,7 +102,7 @@ void loop()
   case InternalError:
     debugSerial.println("Oh No! This shouldn't happen. Something is really wrong! The program will reset the RN module.");
     RED();
-    LoRaSetup();
+    setupLoRa();
     break;
   case Busy:
     debugSerial.println("The device is busy. Sleeping for 10 extra seconds.");
@@ -142,12 +112,12 @@ void loop()
   case NetworkFatalError:
     debugSerial.println("There is a non-recoverable error with the network connection. The program will reset the RN module.");
     RED();
-    LoRaSetup();
+    setupLoRa();
     break;
   case NotConnected:
     debugSerial.println("The device is not connected to the network. The program will reset the RN module.");
     RED();
-    LoRaSetup();
+    setupLoRa();
     break;
   case NoAcknowledgment:
     debugSerial.println("There was no acknowledgment sent back!");
@@ -158,37 +128,112 @@ void loop()
   }
   // Delay between readings
   // 60 000 = 1 minute
-  delay(5000); 
-  
+  delay(5000);
+
   receiveData();
-  
+
   ledOFF();
 }
 
+/* Setup LoRa */
+boolean setupLoRa() {
+  BLUE();
+  debugSerial.print("OTA configurations: ");
+  int OTA_configurations_size = sizeof(OTA_configurations)/sizeof(ota_config_t);
+  debugSerial.print(OTA_configurations_size,10);
+  debugSerial.print("\n");
+
+  debugSerial.print("ABP configurations: ");
+  int ABP_configurations_size = sizeof(ABP_configurations)/sizeof(abp_config_t);
+  debugSerial.print(ABP_configurations_size,10);
+  debugSerial.print("\n");
+
+  // try first with OTA
+  for (int i=0; i<OTA_configurations_size; i++) {
+    debugSerial.print("----------------\nTrying OTA configuration ");
+    debugSerial.println(i,10);
+    printOTAconfig(OTA_configurations[i]);
+    if (LoRaBee.initOTA(loraSerial, OTA_configurations[i].DevEUI, OTA_configurations[i].AppEUI, OTA_configurations[i].AppKey, true))
+    {
+      debugSerial.println("[Done]\n");
+      WHITE();
+      return true;
+    }
+    else
+    {
+      debugSerial.println("[Fail]\n");
+    }
+  }
+
+  // try ABP
+  for (int i=0; i<ABP_configurations_size; i++) {
+    debugSerial.print("----------------\nTrying ABP configuration ");
+    debugSerial.println(i,10);
+    printABPconfig(ABP_configurations[i]);
+    if (LoRaBee.initABP(loraSerial, ABP_configurations[i].DevAddr, ABP_configurations[i].AppSKey, ABP_configurations[i].NwkSKey, true))
+    {
+      debugSerial.println("[Done]\n");
+      WHITE();
+      return true;
+    }
+    else
+    {
+      debugSerial.println("[Fail]\n");
+    }
+  }
+
+  return false;
+}
+
+/* Helpers */
+void printOTAconfig(ota_config_t ota_config) {
+  debugSerial.print("DevEUI:");
+  for(int i=0; i<8; i++)
+    debugSerial.print(ota_config.DevEUI[i], HEX);
+  debugSerial.print("\nAppEUI:");
+  for(int i=0; i<8; i++)
+    debugSerial.print(ota_config.AppEUI[i], HEX);
+  debugSerial.print("\nAppKey:");
+  for(int i=0; i<16; i++)
+    debugSerial.print(ota_config.AppKey[i], HEX);
+  debugSerial.print("\n");
+}
+
+void printABPconfig(abp_config_t abp_config) {
+  debugSerial.print("DevAddr:");
+  for(int i=0; i<4; i++)
+    debugSerial.print(abp_config.DevAddr[i], HEX);
+  debugSerial.print("\nAppSKey:");
+  for(int i=0; i<16; i++)
+    debugSerial.print(abp_config.AppSKey[i], HEX);
+  debugSerial.print("\nNwkSKey:");
+  for(int i=0; i<16; i++)
+    debugSerial.print(abp_config.NwkSKey[i], HEX);
+  debugSerial.print("\n");
+}
+
+/* Sensors functions */
+// Temperature
 String getTemperature()
 {
   //10mV per C, 0C is 500mV
   float mVolts = (float)analogRead(TEMP_SENSOR) * 3300.0 / 1023.0;
   float temp = (mVolts - 500.0) / 10.0;
-  
+
   return String(temp);
 }
 
-/* Soil moisture sensor */
-// digital
-boolean isDry()
-{
+// Soil moisture (digital)
+boolean isDry() {
   return !digitalRead(SMDigital);
 }
-// analog
-String getSMLevel()
-{
+// Soil moisture (analog)
+String getSMLevel() {
   return String(analogRead(SMAnalog));
 }
 
-/* Water Level */
-String getWaterLevel()
-{
+// Water level (analog)
+String getWaterLevel() {
   return String(analogRead(WLAnalog));
 }
 
@@ -217,4 +262,3 @@ void receiveData()
     debugSerial.println("no received transmission!");
   }
 }
-
