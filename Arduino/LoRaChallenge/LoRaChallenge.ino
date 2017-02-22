@@ -78,8 +78,9 @@ void loop() {
   debugSerial.println("SM level: "+getSMLevel());
   debugSerial.println("Water level: "+getWaterLevel());
 
-  String reading = getTemperature();
-  switch (LoRaBee.send(1, (uint8_t*)reading.c_str(), reading.length())) //switch (LoRaBee.send(1, testPayload, 2))
+  String message = getMessage();
+  debugSerial.println("Message("+String(message.length())+" bytes): "+message);
+  switch (LoRaBee.send(1, (uint8_t*)message.c_str(), message.length())) //switch (LoRaBee.send(1, testPayload, 2))
   {
   case NoError:
     debugSerial.println("Successful transmission.");
@@ -212,15 +213,17 @@ void printABPconfig(abp_config_t abp_config) {
   debugSerial.print("\n");
 }
 
+String getMessage() {
+  return "{\"tmp\":"+String(getTemperature())+",\"wl\":"+String(getWaterLevel())+",\"sm\":"+String(getSMLevel())+"}";
+}
+
 /* Sensors functions */
 // Temperature
-String getTemperature()
-{
+float getTemperature() {
   //10mV per C, 0C is 500mV
   float mVolts = (float)analogRead(TEMP_SENSOR) * 3300.0 / 1023.0;
   float temp = (mVolts - 500.0) / 10.0;
-
-  return String(temp);
+  return temp;
 }
 
 // Soil moisture (digital)
