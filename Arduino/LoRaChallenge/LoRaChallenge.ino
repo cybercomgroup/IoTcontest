@@ -8,6 +8,9 @@
 
 #define debugSerial SerialUSB
 #define loraSerial Serial2
+#define SMDigital 8 //D8
+#define SMAnalog  0 //A0
+#define WLAnalog 1 //A1
 
 const uint8_t testPayload[] =
 {
@@ -44,15 +47,16 @@ void ledOFF()
 
 void setup()
 {
-
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
+  //SM sensor
+  pinMode(SMDigital, INPUT);
+  
   ledOFF();
 
   while ((!debugSerial) && (millis() < 10000));
 
-  
   debugSerial.begin(57600);
   loraSerial.begin(LoRaBee.getDefaultBaudRate());
 
@@ -98,6 +102,12 @@ void LoRaSetup()
 
 void loop()
 {
+  // Test
+  debugSerial.print("isDry: ");
+  debugSerial.println(isDry(), DEC);
+  debugSerial.println("SM level: "+getSMLevel());
+  debugSerial.println("Water level: "+getWaterLevel());
+  
   String reading = getTemperature();
   switch (LoRaBee.send(1, (uint8_t*)reading.c_str(), reading.length())) //switch (LoRaBee.send(1, testPayload, 2))
   {
@@ -164,6 +174,23 @@ String getTemperature()
   return String(temp);
 }
 
+/* Soil moisture sensor */
+// digital
+boolean isDry()
+{
+  return !digitalRead(SMDigital);
+}
+// analog
+String getSMLevel()
+{
+  return String(analogRead(SMAnalog));
+}
+
+/* Water Level */
+String getWaterLevel()
+{
+  return String(analogRead(WLAnalog));
+}
 
 void receiveData()
 {
