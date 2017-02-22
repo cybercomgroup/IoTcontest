@@ -1,49 +1,31 @@
-<html>
-  <head>
+<script type="text/javascript" src="//pubnub.github.io/eon/v/eon/1.0.0/eon.js"></script>
+<link type="text/css" rel="stylesheet" href="//pubnub.github.io/eon/v/eon/1.0.0/eon.css"/>
 
-    <!-- needs to be updated with newest eon lib version -->
-<script type="text/javascript" src="http://pubnub.github.io/eon/v/eon/0.0.10/eon.js"></script>
-<link type="text/css" rel="stylesheet" href="http://pubnub.github.io/eon/v/eon/0.0.10/eon.css" />
+<div id="chart"></div>
+<script>
+  var pubnub = new PubNub({
+    publishKey : 'pub-c-6a280745-fb91-471d-a9bd-117e5d47c756',
+    subscribeKey : 'sub-c-66a216ea-f298-11e6-af0f-0619f8945a4f'
+  });
 
-  </head>
-  <body>
+  eon.chart({
+    pubnub: pubnub,
+    channels: ["Tele2Uplink"],
+    generate: {
+      bindto: '#chart',
+      data: {
+        labels: true
+      }
+    },
+    transform: function(data) {
+      var obj = JSON.parse(data);
 
-    <div id="chart"></div>
-
-    <script>
-      var pubnub = PUBNUB.init({
-        publishKey : 'pub-c-6a280745-fb91-471d-a9bd-117e5d47c756',
-        subscribeKey : 'sub-c-66a216ea-f298-11e6-af0f-0619f8945a4f'
-      });
-      eon.chart({
-        history: true,
-        channel: 'Tele2Uplink',
-        flow: true,
-        limit: 100,
-        debug: false,
-        pubnub: pubnub,
-        rate: 500,
-        debug: true,
-        generate: {
-          bindto: '#chart',
-          transition: {
-            duration: 100
-          },
-          data: {
-            type: 'spline',
-            labels: true
-          }
-        },
-        transform: function(data) {
-            console.log("i am here");
-            console.log(data);
-            return { columns : [
-                ['x', new Date().getTime()],
-                ['Value', data]
-            ] };
+      return {
+        "eon": {
+          "temp": atob(obj.data.toString()),
+          "_eonDatetime": new Date().getTime()
         }
-      });
-    </script>
-
-  </body>
-</html>
+      }
+    }
+  });
+</script>
