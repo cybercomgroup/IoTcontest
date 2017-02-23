@@ -17,8 +17,8 @@ const auth = "Basic " + new Buffer(username + ":" + token).toString("base64");
 function publish() {
 
     var pubnub = new PubNub({
-        publishKey : 'pub-c-6a280745-fb91-471d-a9bd-117e5d47c756',
-        subscribeKey : 'sub-c-66a216ea-f298-11e6-af0f-0619f8945a4f'
+        publishKey : process.env.PUBNUB_PUBLISH_KEY,
+        subscribeKey : process.env.PUBNUB_SUBSCRIBE_KEY
     })
 
     pubnub.addListener({
