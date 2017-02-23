@@ -6,16 +6,15 @@
 
 #include "env.h"
 
+//Serial ports
 #define debugSerial SerialUSB
 #define loraSerial Serial2
+
+//Sensor IO
 #define SMDigital 8 //D8
 #define SMAnalog  0 //A0
 #define WLAnalog 1 //A1
 
-const uint8_t testPayload[] =
-{
-  0x13, 0x37,
-};
 
 void RED()
 {
@@ -52,7 +51,8 @@ void ledOFF()
   digitalWrite(LED_BLUE, HIGH);
 }
 
-void setup() {
+void setup()
+{
   // Leds
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
@@ -71,10 +71,18 @@ void setup() {
 
 }
 
-void loop() {
+void loop()
+{
   // Test
   debugSerial.print("isDry: ");
-  debugSerial.println(isDry(), DEC);
+  if(isDry())
+  {
+    debugSerial.println("True");
+  }
+  else
+  {
+    debugSerial.println("False");
+  }
   debugSerial.println("SM level: "+getSMLevel());
   debugSerial.println("Water level: "+getWaterLevel());
 
@@ -129,7 +137,7 @@ void loop() {
   }
   // Delay between readings
   // 60 000 = 1 minute
-  delay(5000);
+  delay(10000);
 
   receiveData();
 
@@ -137,89 +145,91 @@ void loop() {
 }
 
 /* Setup LoRa */
-boolean setupLoRa() {
+boolean setupLoRa()
+{
   BLUE();
-  debugSerial.print("OTA configurations: ");
-  int OTA_configurations_size = sizeof(OTA_configurations)/sizeof(ota_config_t);
-  debugSerial.print(OTA_configurations_size,10);
-  debugSerial.print("\n");
-
-  debugSerial.print("ABP configurations: ");
-  int ABP_configurations_size = sizeof(ABP_configurations)/sizeof(abp_config_t);
-  debugSerial.print(ABP_configurations_size,10);
-  debugSerial.print("\n");
 
   // try first with OTA
-  for (int i=0; i<OTA_configurations_size; i++) {
-    debugSerial.print("----------------\nTrying OTA configuration ");
-    debugSerial.println(i,10);
-    printOTAconfig(OTA_configurations[i]);
-    if (LoRaBee.initOTA(loraSerial, OTA_configurations[i].DevEUI, OTA_configurations[i].AppEUI, OTA_configurations[i].AppKey, true))
-    {
-      debugSerial.println("[Done]\n");
-      WHITE();
-      return true;
-    }
-    else
-    {
-      debugSerial.println("[Fail]\n");
-    }
+  debugSerial.print("----------------\nTrying OTA configuration ");
+  printOTAconfig(OTA_configuration);
+  if (LoRaBee.initOTA(loraSerial, OTA_configuration.DevEUI, OTA_configuration.AppEUI, OTA_configuration.AppKey, true))
+  {
+    debugSerial.println("[Done]\n");
+    WHITE();
+    return true;
+  }
+  else
+  {
+    debugSerial.println("[Fail]\n");
   }
 
   // try ABP
-  for (int i=0; i<ABP_configurations_size; i++) {
-    debugSerial.print("----------------\nTrying ABP configuration ");
-    debugSerial.println(i,10);
-    printABPconfig(ABP_configurations[i]);
-    if (LoRaBee.initABP(loraSerial, ABP_configurations[i].DevAddr, ABP_configurations[i].AppSKey, ABP_configurations[i].NwkSKey, true))
-    {
-      debugSerial.println("[Done]\n");
-      WHITE();
-      return true;
-    }
-    else
-    {
-      debugSerial.println("[Fail]\n");
-    }
+  debugSerial.print("----------------\nTrying ABP configuration ");
+  printABPconfig(ABP_configuration);
+  if (LoRaBee.initABP(loraSerial, ABP_configuration.DevAddr, ABP_configuration.AppSKey, ABP_configuration.NwkSKey, true))
+  {
+    debugSerial.println("[Done]\n");
+    WHITE();
+    return true;
+  }
+  else
+  {
+    debugSerial.println("[Fail]\n");
   }
 
   return false;
 }
 
 /* Helpers */
-void printOTAconfig(ota_config_t ota_config) {
+void printOTAconfig(ota_config_t ota_config)
+{
   debugSerial.print("DevEUI:");
   for(int i=0; i<8; i++)
+  {
     debugSerial.print(ota_config.DevEUI[i], HEX);
+  }
   debugSerial.print("\nAppEUI:");
   for(int i=0; i<8; i++)
+  {
     debugSerial.print(ota_config.AppEUI[i], HEX);
+  }
   debugSerial.print("\nAppKey:");
   for(int i=0; i<16; i++)
+  {
     debugSerial.print(ota_config.AppKey[i], HEX);
+  }
   debugSerial.print("\n");
 }
 
-void printABPconfig(abp_config_t abp_config) {
+void printABPconfig(abp_config_t abp_config)
+{
   debugSerial.print("DevAddr:");
   for(int i=0; i<4; i++)
+  {
     debugSerial.print(abp_config.DevAddr[i], HEX);
+  }
   debugSerial.print("\nAppSKey:");
   for(int i=0; i<16; i++)
+  {
     debugSerial.print(abp_config.AppSKey[i], HEX);
+  }
   debugSerial.print("\nNwkSKey:");
   for(int i=0; i<16; i++)
+  {
     debugSerial.print(abp_config.NwkSKey[i], HEX);
+  }
   debugSerial.print("\n");
 }
 
-String getMessage() {
+String getMessage()
+{
   return "{\"tmp\":"+String(getTemperature())+",\"wl\":"+String(getWaterLevel())+",\"sm\":"+String(getSMLevel())+"}";
 }
 
 /* Sensors functions */
 // Temperature
-float getTemperature() {
+float getTemperature()
+{
   //10mV per C, 0C is 500mV
   float mVolts = (float)analogRead(TEMP_SENSOR) * 3300.0 / 1023.0;
   float temp = (mVolts - 500.0) / 10.0;
@@ -227,16 +237,19 @@ float getTemperature() {
 }
 
 // Soil moisture (digital)
-boolean isDry() {
+boolean isDry()
+{
   return !digitalRead(SMDigital);
 }
 // Soil moisture (analog)
-String getSMLevel() {
+String getSMLevel()
+{
   return String(analogRead(SMAnalog));
 }
 
 // Water level (analog)
-String getWaterLevel() {
+String getWaterLevel()
+{
   return String(analogRead(WLAnalog));
 }
 
