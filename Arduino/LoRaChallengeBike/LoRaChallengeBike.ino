@@ -88,11 +88,60 @@ void loop() {
 void analyzeNMEA(void) {
   String prefix = gps_message.substring(1,6);
   if (prefix == "GPRMC") {
-    DEBUG.println("GPRMC");
+    //DEBUG.println("GPRMC");
   } else if (prefix == "GPGGA") {
-    DEBUG.println("GPGGA");
+    //DEBUG.println("GPGGA");
+    int comma=0;
+    int comma_position = 0;
+    for (int i=0; i<gps_message.length(); i++) {
+      if (gps_message.charAt(i) == ',') {
+        switch(comma++) {
+          case 1:
+            DEBUG.println("Time: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 2:
+            DEBUG.println("Latitude: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 3:
+            DEBUG.println("Latitude(N/S): "+gps_message.substring(comma_position+1, i));
+            break;
+          case 4:
+            DEBUG.println("Longitude: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 5:
+            DEBUG.println("Longitude(E/W): "+gps_message.substring(comma_position+1, i));
+            break;
+          case 6:
+            DEBUG.println("Quality: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 7:
+            DEBUG.println("Satellites: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 8:
+            DEBUG.println("Horizontal dilution: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 9:
+            DEBUG.println("Altitude: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 10:
+            DEBUG.println("Altitude(units): "+gps_message.substring(comma_position+1, i));
+            break;
+          case 11:
+            DEBUG.println("Height: "+gps_message.substring(comma_position+1, i));
+            break;
+          case 12:
+            DEBUG.println("Height(units): "+gps_message.substring(comma_position+1, i));
+            break;
+          default:
+            break;
+        }
+        comma_position = i;
+      }
+    }
+
+
   } else if (prefix == "GPGSA") {
-    DEBUG.println("GPGSA");
+    //DEBUG.println("GPGSA");
   } else {
     DEBUG.println("Unexpected: "+prefix);
   }
