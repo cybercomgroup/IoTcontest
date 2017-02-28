@@ -5,7 +5,11 @@
 */
 #include <Sodaq_RN2483.h>
 #include <Sodaq_wdt.h>
+#include <RTCZero.h>
 #include "leds.h"
+#include "gps.h"
+#include "lora.h"
+#include "env.h"
 
 #define DEBUG SerialUSB
 #define DEBUG_BAUDRATE 57600
@@ -23,20 +27,39 @@ String gps_message = "";
 String gps_buffer = "";
 int gps_buffer_size = 0;
 long spin_counter = 0;
+RTCZero rtc;
+gps_data_t gps_data;
+lora_connection_t lora_connection;
+boolean task_send_spins = false;
+boolean task_send_gps = false;
+
 
 /* Setup Functions. */
 void setup() {
   setupVars();
   setupIOs();
-  RED;
+  LED_OFF;
   setupInterrupts();
+  setupRTC();
   setupSerialPorts();
   DEBUG.println("[LoRa Challenge Bike Condition Monitoring]");
   DEBUG.println("setup.LoRa");
-  if (setupLoRa())
-    DEBUG.println(" Done");
-  else
-    DEBUG.println(" Fails");
+
+  switch(lora_connection=setupLoRa()) {
+    case not_connected:
+      DEBUG.println("LoRa not connected");
+      break;
+    case abp_connected:
+      DEBUG.println("LoRa connected by ABP");
+      break;
+    case ota_connected:
+      DEBUG.println("LoRa connected by OTA");
+      break;
+    default:
+      DEBUG.println("Unexpected LoRa status");
+      break;
+  }
+
 }
 
 void setupVars() {
@@ -56,6 +79,15 @@ void setupInterrupts() {
   interrupts();
 }
 
+void setupRTC() {
+  rtc.begin();
+  rtc.setTime(0,0,0);
+  rtc.setDate(0,0,0);
+  rtc.setAlarmSeconds(59);
+  rtc.enableAlarm(rtc.MATCH_SS);
+  rtc.attachInterrupt(_INT_RTC);
+}
+
 void setupSerialPorts() {
   while((!DEBUG) && (millis() < 10000));
   DEBUG.begin(DEBUG_BAUDRATE);
@@ -63,8 +95,13 @@ void setupSerialPorts() {
   LORA.begin(LORA_BAUDRATE);
 }
 
-boolean setupLoRa() {
-  return true;
+lora_connection_t setupLoRa() {
+  WHITE;
+  if (LoRaBee.initOTA(LORA, OTA_configuration.DevEUI, OTA_configuration.AppEUI, OTA_configuration.AppKey, true))
+    return ota_connected;
+  if (LoRaBee.initABP(LORA, ABP_configuration.DevAddr, ABP_configuration.AppSKey, ABP_configuration.NwkSKey, true))
+    return abp_connected;
+  return not_connected;
 }
 
 /* Loop functions.  */
@@ -75,13 +112,19 @@ void loop() {
     digitalWrite(TEST_OUTPUT, HIGH);
   else
     digitalWrite(TEST_OUTPUT, LOW);
-
-  if ((loopCounter++)%10 == 0) {
-    DEBUG.print("Spins: ");
-    DEBUG.println(spin_counter, 10);
-  }
+  //if (loopCounter%10) DEBUG.println(".");
   delay(100);
+
   LED_OFF;
+  loopCounter ++;
+  if (task_send_gps) {
+    sendGPS();
+    task_send_gps = false;
+  }
+  if (task_send_spins) {
+    sendSpins();
+    task_send_spins = false;
+  }
 }
 
 /* Helpers */
@@ -91,60 +134,160 @@ void analyzeNMEA(void) {
     //DEBUG.println("GPRMC");
   } else if (prefix == "GPGGA") {
     //DEBUG.println("GPGGA");
-    int comma=0;
-    int comma_position = 0;
-    for (int i=0; i<gps_message.length(); i++) {
-      if (gps_message.charAt(i) == ',') {
-        switch(comma++) {
-          case 1:
-            DEBUG.println("Time: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 2:
-            DEBUG.println("Latitude: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 3:
-            DEBUG.println("Latitude(N/S): "+gps_message.substring(comma_position+1, i));
-            break;
-          case 4:
-            DEBUG.println("Longitude: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 5:
-            DEBUG.println("Longitude(E/W): "+gps_message.substring(comma_position+1, i));
-            break;
-          case 6:
-            DEBUG.println("Quality: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 7:
-            DEBUG.println("Satellites: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 8:
-            DEBUG.println("Horizontal dilution: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 9:
-            DEBUG.println("Altitude: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 10:
-            DEBUG.println("Altitude(units): "+gps_message.substring(comma_position+1, i));
-            break;
-          case 11:
-            DEBUG.println("Height: "+gps_message.substring(comma_position+1, i));
-            break;
-          case 12:
-            DEBUG.println("Height(units): "+gps_message.substring(comma_position+1, i));
-            break;
-          default:
-            break;
-        }
-        comma_position = i;
-      }
-    }
-
-
+    parseGPGGA();
   } else if (prefix == "GPGSA") {
     //DEBUG.println("GPGSA");
   } else {
     DEBUG.println("Unexpected: "+prefix);
   }
+}
+
+void parseGPGGA() {
+  int comma=0, comma_position = 0, satellites, gpsTime, latG, latM, lonG, lonM;
+  float latS, lonS;
+  boolean north, east;
+  String tmpString, tmpString2;
+
+  for (int i=0; i<gps_message.length(); i++) {
+    if (gps_message.charAt(i) == ',') {
+      switch(comma++) {
+        case 1:
+          gpsTime = gps_message.substring(comma_position+1, i).toInt();
+          break;
+        case 2:
+          tmpString = gps_message.substring(comma_position+1, i);
+          tmpString2 = tmpString.substring(0, tmpString.indexOf('.'));
+          latG = tmpString2.substring(0, tmpString2.length()-2).toInt();
+          latM = tmpString2.substring(tmpString2.length()-2).toInt();
+          tmpString2 = tmpString.substring(tmpString.indexOf('.')+1);
+          latS = tmpString2.toFloat()/pow(10,tmpString2.length()-2);
+          break;
+        case 3:
+          north = (gps_message.substring(comma_position+1, i).equals("N"));
+          break;
+        case 4:
+          tmpString = gps_message.substring(comma_position+1, i);
+          tmpString2 = tmpString.substring(0, tmpString.indexOf('.'));
+          lonG = tmpString2.substring(0, tmpString2.length()-2).toInt();
+          lonM = tmpString2.substring(tmpString2.length()-2).toInt();
+          tmpString2 = tmpString.substring(tmpString.indexOf('.')+1);
+          lonS = tmpString2.toFloat()/pow(10,tmpString2.length()-2);
+          break;
+        case 5:
+          east = (gps_message.substring(comma_position+1, i).equals("E"));
+          break;
+        case 7:
+          satellites = gps_message.substring(comma_position+1, i).toInt();
+          break;
+        default:
+          break;
+      }
+      comma_position = i;
+    }
+  }
+
+
+  if (satellites > 2) { // precision of at least 3 satellites is needed
+    gps_data.satellites = satellites;
+    gps_data.timeHH = (int) gpsTime/10000;
+    gps_data.timeMM = (int)(gpsTime%10000 /100);
+    gps_data.timeSS = gpsTime%100;
+    gps_data.latitude = getGoogleCoords(north, latG, latM, latS);
+    gps_data.longitude = getGoogleCoords(east, lonG, lonM, lonS);
+  }
+
+}
+
+float getGoogleCoords(boolean emisphere, int g, int m, float s) {
+  return (emisphere?1:-1)*(g+((s/60)+(float)m)/60);
+}
+
+boolean sendMessage(String message2send) {
+  String message = message2send;
+  DEBUG.print("Sending (");
+  DEBUG.print(message.length());
+  DEBUG.print(" bytes): ");
+  DEBUG.println(message);
+  if (lora_connection == not_connected)
+    lora_connection = setupLoRa();
+    else
+  DEBUG.println("Already connected");
+
+  switch (LoRaBee.send(1, (const uint8_t*)message.c_str(), message.length())) {
+    case NoError:
+      GREEN;
+      DEBUG.println("Message sent");
+      return true;
+    default:
+      RED;
+      DEBUG.println("Error -> reconnect next time");
+      lora_connection = not_connected;
+      return false;
+  }
+}
+
+void sendSpins() {
+  String spinsMsg = "{\"spins\":\""+String(spin_counter)+"\"}";
+  if (sendMessage(spinsMsg)) {
+    spin_counter = 0;
+  }
+}
+
+void sendGPS() {
+  String gpsMsg = "{\"la\":\""+String(gps_data.latitude,14)+"\",\"lo\":\""+String(gps_data.longitude,14)+"\"}";
+  sendMessage(gpsMsg);
+}
+
+void checkIncomingMessages() {
+  uint8_t payload[64];
+  uint16_t len = LoRaBee.receive(payload, 64);
+  String payloadText = "";
+  if (len > 0) {
+    payloadText = (char*)payload;
+    DEBUG.println("Incoming Message: "+payloadText);
+    task_send_gps = true;
+  }
+  else {
+    DEBUG.println("No Incoming Message");
+  }
+}
+
+void printGPSdata() {
+  DEBUG.print(" [GPS] time: ");
+  DEBUG.print(gps_data.timeHH, 10);
+  DEBUG.print(":");
+  DEBUG.print(gps_data.timeMM, 10);
+  DEBUG.print(":");
+  DEBUG.print(gps_data.timeSS, 10);
+  DEBUG.print(", satellites: ");
+  DEBUG.print(gps_data.satellites, 10);
+  DEBUG.print(", latitude: ");
+  DEBUG.print(gps_data.latitude, 10);
+  DEBUG.print(", longitude: ");
+  DEBUG.print(gps_data.longitude, 10);
+}
+
+void print2digits(int number) {
+  if (number < 10) {
+    DEBUG.print("0");
+  }
+  DEBUG.print(number);
+}
+
+void printTime() {
+  print2digits(rtc.getHours());
+  DEBUG.print(":");
+  print2digits(rtc.getMinutes());
+  DEBUG.print(":");
+  print2digits(rtc.getSeconds());
+}
+
+void printStatusReport() {
+  printTime();
+  DEBUG.print(" Spins: ");
+  DEBUG.print(spin_counter, 10);
+  printGPSdata();
+  DEBUG.print("\n");
 }
 
 /* Interruptions */
@@ -168,6 +311,18 @@ void _INT_GPS() {
 }
 
 void _INT_SPIN_WHEEL() {
-  RED;
+  BLUE;
   spin_counter++;
+}
+
+int rtc_counter = 0;
+
+void _INT_RTC() {
+  rtc_counter += 10;
+  printStatusReport();
+  checkIncomingMessages();
+  if (rtc_counter > 9) {
+    rtc_counter = 0;
+    task_send_spins = true;
+  }
 }

@@ -36,4 +36,4 @@ do { \
   digitalWrite(LED_BLUE, HIGH); \
 } while (0)
 
-#endif _leds_h_
+#endif /*_leds_h_*/
