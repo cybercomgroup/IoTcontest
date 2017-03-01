@@ -7,7 +7,7 @@ var Client = require('node-rest-client').Client;
 
 const deviceType = 'explorer-devicetype';
 const deviceId = 'loraSecond';
-const token = 'me8MYwqHuiC-UF3j?N';
+const token = '6k@bx3K2kWe_LtdY!x';
 const event = 'myEvent';
 const url = 'https://oefljl.internetofthings.ibmcloud.com/api/v0002/device/types/' + deviceType + '/devices/' + deviceId + '/events/' + event;
 const username = "use-token-auth";
@@ -28,6 +28,8 @@ function publish() {
             }
         },
         message: function(message) {
+            console.log(auth);
+
             // var obj = JSON.parse(message.message);
             // var buf = new Buffer(obj.data, 'base64');
             //
@@ -35,7 +37,7 @@ function publish() {
             //     temp: buf.toString()
             // };
             //
-            // var options_auth = { user: username, password: token };
+            // // var options_auth = { user: username, password: token };
             // var client = new Client();
             //
             // // set content-type header and data as json in args parameter
@@ -46,7 +48,7 @@ function publish() {
             //       "Authorization": auth
             //     }
             // };
-
+            //
             // client.post(url, args, function (data, response) {
             //     // parsed response body as js object
             //     console.log(response.statusCode);
