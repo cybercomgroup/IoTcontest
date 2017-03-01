@@ -14,12 +14,15 @@
 #define DEBUG SerialUSB
 #define DEBUG_BAUDRATE 57600
 #define GPS Serial
-#define GPS_BAUDRATE 4800
+#define GPS_BAUDRATE 9600
 #define LORA Serial2
 #define LORA_BAUDRATE LoRaBee.getDefaultBaudRate()
 #define SPIN_INTERRUPT  8
 #define SPIN_LED        9
 #define TEST_OUTPUT     10
+#define GPS_DATA_PORT   100
+#define SPINS_DATA_PORT 101
+#define REGISTRATION_PORT 102
 
 /* Global vars */
 boolean spin_led_on = false;
@@ -60,6 +63,7 @@ void setup() {
       break;
   }
 
+  sendRegistration();
 }
 
 void setupVars() {
@@ -107,20 +111,26 @@ lora_connection_t setupLoRa() {
 /* Loop functions.  */
 int loopCounter = 0;
 void loop() {
+  loopCounter++;
 
-  if (loopCounter%5)
+  if (!(loopCounter%50))
     digitalWrite(TEST_OUTPUT, HIGH);
   else
     digitalWrite(TEST_OUTPUT, LOW);
-  //if (loopCounter%10) DEBUG.println(".");
-  delay(100);
+  delay(10);
 
   LED_OFF;
-  loopCounter ++;
-  if (task_send_gps) {
+  if (lora_connection == not_connected) RED;
+
+  /*if (!(loopCounter%100)) {
+  checkIncomingMessages();
+}*/
+
+  /*if (task_send_gps) {
     sendGPS();
     task_send_gps = false;
-  }
+  }*/
+
   if (task_send_spins) {
     sendSpins();
     task_send_spins = false;
@@ -138,11 +148,12 @@ void analyzeNMEA(void) {
   } else if (prefix == "GPGSA") {
     //DEBUG.println("GPGSA");
   } else {
-    DEBUG.println("Unexpected: "+prefix);
+    //DEBUG.println("Unexpected: "+prefix);
   }
 }
 
 void parseGPGGA() {
+  DEBUG.print(gps_message);
   int comma=0, comma_position = 0, satellites, gpsTime, latG, latM, lonG, lonM;
   float latS, lonS;
   boolean north, east;
@@ -194,6 +205,7 @@ void parseGPGGA() {
     gps_data.timeSS = gpsTime%100;
     gps_data.latitude = getGoogleCoords(north, latG, latM, latS);
     gps_data.longitude = getGoogleCoords(east, lonG, lonM, lonS);
+
   }
 
 }
@@ -202,7 +214,7 @@ float getGoogleCoords(boolean emisphere, int g, int m, float s) {
   return (emisphere?1:-1)*(g+((s/60)+(float)m)/60);
 }
 
-boolean sendMessage(String message2send) {
+boolean sendMessage(String message2send, int portNumber) {
   String message = message2send;
   DEBUG.print("Sending (");
   DEBUG.print(message.length());
@@ -213,29 +225,41 @@ boolean sendMessage(String message2send) {
     else
   DEBUG.println("Already connected");
 
-  switch (LoRaBee.send(1, (const uint8_t*)message.c_str(), message.length())) {
+  boolean res = false;
+  switch (LoRaBee.send(portNumber, (const uint8_t*)message.c_str(), message.length())) {
     case NoError:
       GREEN;
       DEBUG.println("Message sent");
-      return true;
+      res = true;
+      break;
     default:
       RED;
       DEBUG.println("Error -> reconnect next time");
       lora_connection = not_connected;
-      return false;
+      res = false;
+      break;
   }
+
+  checkIncomingMessages();
+
+  return res;
 }
 
 void sendSpins() {
   String spinsMsg = "{\"spins\":\""+String(spin_counter)+"\"}";
-  if (sendMessage(spinsMsg)) {
+  if (sendMessage(spinsMsg, SPINS_DATA_PORT)) {
     spin_counter = 0;
   }
 }
 
+void sendRegistration() {
+  String regMsg = "{\"bike\":1000}";
+  sendMessage(regMsg, REGISTRATION_PORT);
+}
+
 void sendGPS() {
   String gpsMsg = "{\"la\":\""+String(gps_data.latitude,14)+"\",\"lo\":\""+String(gps_data.longitude,14)+"\"}";
-  sendMessage(gpsMsg);
+  sendMessage(gpsMsg, GPS_DATA_PORT);
 }
 
 void checkIncomingMessages() {
@@ -245,11 +269,12 @@ void checkIncomingMessages() {
   if (len > 0) {
     payloadText = (char*)payload;
     DEBUG.println("Incoming Message: "+payloadText);
-    task_send_gps = true;
+    //task_send_gps = true;
+    sendGPS();
   }
-  else {
+  /*else {
     DEBUG.println("No Incoming Message");
-  }
+  }*/
 }
 
 void printGPSdata() {
@@ -299,6 +324,7 @@ void _INT_GPS() {
   GREEN;
   while(GPS.available()) {
     char inChar = GPS.read();
+    //DEBUG.print(inChar);
     if (inChar == 0x24 && gps_buffer_size > 1) { // $ means new message
       gps_message = gps_buffer;
       analyzeNMEA();
@@ -320,7 +346,7 @@ int rtc_counter = 0;
 void _INT_RTC() {
   rtc_counter += 10;
   printStatusReport();
-  checkIncomingMessages();
+  //checkIncomingMessages();
   if (rtc_counter > 9) {
     rtc_counter = 0;
     task_send_spins = true;
