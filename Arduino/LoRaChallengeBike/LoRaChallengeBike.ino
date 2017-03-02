@@ -18,14 +18,15 @@
 #define LORA Serial2
 #define LORA_BAUDRATE LoRaBee.getDefaultBaudRate()
 #define SPIN_INTERRUPT  8
-#define SPIN_LED        9
-#define TEST_OUTPUT     10
+#define SPIN_LED        7
+#define GPS_LED         6
 #define GPS_DATA_PORT   100
 #define SPINS_DATA_PORT 101
 #define REGISTRATION_PORT 102
 
 /* Global vars */
 boolean spin_led_on = false;
+boolean gps_led_on = false;
 String gps_message = "";
 String gps_buffer = "";
 int gps_buffer_size = 0;
@@ -73,7 +74,7 @@ void setupVars() {
 
 void setupIOs() {
   pinMode(SPIN_LED, OUTPUT);
-  pinMode(TEST_OUTPUT, OUTPUT);
+  pinMode(GPS_LED, OUTPUT);
   pinMode(SPIN_INTERRUPT, INPUT_PULLDOWN);
 }
 
@@ -109,28 +110,10 @@ lora_connection_t setupLoRa() {
 }
 
 /* Loop functions.  */
-int loopCounter = 0;
 void loop() {
-  loopCounter++;
-
-  if (!(loopCounter%50))
-    digitalWrite(TEST_OUTPUT, HIGH);
-  else
-    digitalWrite(TEST_OUTPUT, LOW);
   delay(10);
-
   LED_OFF;
   if (lora_connection == not_connected) RED;
-
-  /*if (!(loopCounter%100)) {
-  checkIncomingMessages();
-}*/
-
-  /*if (task_send_gps) {
-    sendGPS();
-    task_send_gps = false;
-  }*/
-
   if (task_send_spins) {
     sendSpins();
     task_send_spins = false;
@@ -153,7 +136,8 @@ void analyzeNMEA(void) {
 }
 
 void parseGPGGA() {
-  DEBUG.print(gps_message);
+  //DEBUG.print(gps_message);
+  blink_gps_led();
   int comma=0, comma_position = 0, satellites, gpsTime, latG, latM, lonG, lonM;
   float latS, lonS;
   boolean north, east;
@@ -315,6 +299,20 @@ void printStatusReport() {
   DEBUG.print("\n");
 }
 
+void blink_spin_led() {
+  DEBUG.println("spin");
+  spin_led_on = !spin_led_on;
+  if (spin_led_on) digitalWrite(SPIN_LED, HIGH);
+  else digitalWrite(SPIN_LED, LOW);
+}
+
+
+void blink_gps_led() {
+  gps_led_on = !gps_led_on;
+  if (gps_led_on) digitalWrite(GPS_LED, HIGH);
+  else digitalWrite(GPS_LED, LOW);
+}
+
 /* Interruptions */
 void serialEventRun(void) {
   if (GPS.available()) _INT_GPS();
@@ -338,13 +336,14 @@ void _INT_GPS() {
 
 void _INT_SPIN_WHEEL() {
   BLUE;
+  blink_spin_led();
   spin_counter++;
 }
 
 int rtc_counter = 0;
 
 void _INT_RTC() {
-  rtc_counter += 10;
+  rtc_counter ++;
   printStatusReport();
   //checkIncomingMessages();
   if (rtc_counter > 9) {
