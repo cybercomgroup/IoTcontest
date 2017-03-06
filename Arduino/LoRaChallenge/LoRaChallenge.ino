@@ -61,33 +61,29 @@ void setup()
   pinMode(SMDigital, INPUT);
 
   ledOFF();
-
+  
   while ((!debugSerial) && (millis() < 10000));
 
   debugSerial.begin(57600);
   loraSerial.begin(LoRaBee.getDefaultBaudRate());
-
+  LoRaBee.setDiag(debugSerial);
   setupLoRa();
 
+  uint8_t buf[8];
+  uint8_t x = LoRaBee.getHWEUI(buf, sizeof(buf));
+  debugSerial.println("HWEUI:");
+  for(int i = 0; i < x; i++)
+  {
+    debugSerial.print(buf[i], HEX);
+  }
+  debugSerial.println();
 }
 
 void loop()
 {
-  // Test
-  debugSerial.print("isDry: ");
-  if(isDry())
-  {
-    debugSerial.println("True");
-  }
-  else
-  {
-    debugSerial.println("False");
-  }
-  debugSerial.println("SM level: "+getSMLevel());
-  debugSerial.println("Water level: "+getWaterLevel());
-
+  
   String message = getMessage();
-  debugSerial.println("Message("+String(message.length())+" bytes): "+message);
+  debugSerial.println("Message(" + String(message.length())+" bytes): " + message);
   switch (LoRaBee.send(1, (uint8_t*)message.c_str(), message.length())) //switch (LoRaBee.send(1, testPayload, 2))
   {
   case NoError:
@@ -148,7 +144,7 @@ void loop()
 boolean setupLoRa()
 {
   BLUE();
-
+  
   // try first with OTA
   debugSerial.print("----------------\nTrying OTA configuration ");
   printOTAconfig(OTA_configuration);
@@ -223,34 +219,7 @@ void printABPconfig(abp_config_t abp_config)
 
 String getMessage()
 {
-  return "{\"tmp\":"+String(getTemperature())+",\"wl\":"+String(getWaterLevel())+",\"sm\":"+String(getSMLevel())+"}";
-}
-
-/* Sensors functions */
-// Temperature
-float getTemperature()
-{
-  //10mV per C, 0C is 500mV
-  float mVolts = (float)analogRead(TEMP_SENSOR) * 3300.0 / 1023.0;
-  float temp = (mVolts - 500.0) / 10.0;
-  return temp;
-}
-
-// Soil moisture (digital)
-boolean isDry()
-{
-  return !digitalRead(SMDigital);
-}
-// Soil moisture (analog)
-String getSMLevel()
-{
-  return String(analogRead(SMAnalog));
-}
-
-// Water level (analog)
-String getWaterLevel()
-{
-  return String(analogRead(WLAnalog));
+  return String(1337);
 }
 
 void receiveData()
