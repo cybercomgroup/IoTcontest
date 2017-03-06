@@ -7,13 +7,14 @@ dotenv.load();
 
 window.updateChart = function() {
   const pubnub = new PubNub({
-    publishKey : process.env.PUBNUB_PUBLISH_KEY,
-    subscribeKey : 'sub-c-66a216ea-f298-11e6-af0f-0619f8945a4f'
+    // publishKey : process.env.PUBNUB_PUBLISH_KEY,
+    // subscribeKey : 'sub-c-66a216ea-f298-11e6-af0f-0619f8945a4f'
+    subscribeKey : 'sub-c-e58317c4-fcd5-11e6-8240-0619f8945a4f'
   });
 
   eon.chart({
     pubnub: pubnub,
-    channels: ["Tele2Uplink"],
+    channels: ["counterIoTUplink"],
     generate: {
       bindto: '#chart',
       data: {
@@ -21,18 +22,49 @@ window.updateChart = function() {
       }
     },
     transform: function(data) {
+      console.log(data);
       var obj = JSON.parse(data);
 
-      console.log(obj);
+      console.log(obj.data);
+
+      obj.data = obj.data + '==';
+      console.log(obj.data);
+
+      var buf = new Buffer(obj.data, 'base64');
+      console.log(parseInt(buf.toString('hex'), 16));
+
 
       return {
         "eon": {
-          "temp": atob(obj.data.toString()),
+          "counter": parseInt(buf.toString('hex'), 16),
           "_eonDatetime": new Date().getTime()
         }
       }
     }
   });
+
+  // eon.chart({
+  //   pubnub: pubnub,
+  //   channels: ["Tele2Uplink"],
+  //   generate: {
+  //     bindto: '#chart',
+  //     data: {
+  //       labels: true
+  //     }
+  //   },
+  //   transform: function(data) {
+  //     var obj = JSON.parse(data);
+  //
+  //     console.log(obj);
+  //
+  //     return {
+  //       "eon": {
+  //         "temp": atob(obj.data.toString()),
+  //         "_eonDatetime": new Date().getTime()
+  //       }
+  //     }
+  //   }
+  // });
 }
 
 window.updateMap = function() {
