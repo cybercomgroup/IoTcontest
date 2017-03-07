@@ -1,6 +1,3 @@
-var express = require('express');
-var router = express.Router();
-
 var PubNub = require('pubnub');
 const request = require('request-promise');
 var Client = require('node-rest-client').Client;
@@ -16,6 +13,9 @@ const auth = "Basic " + new Buffer(username + ":" + token).toString("base64");
 
 function publish() {
 
+    console.log("Subscribing..");
+    var accumulatedValue = 0;
+
     var pubnub = new PubNub({
         publishKey : process.env.PUBNUB_PUBLISH_KEY,
         subscribeKey : process.env.PUBNUB_SUBSCRIBE_KEY
@@ -28,15 +28,33 @@ function publish() {
             }
         },
         message: function(message) {
-            console.log(auth);
 
-            // var obj = JSON.parse(message.message);
-            // var buf = new Buffer(obj.data, 'base64');
-            //
-            // var objectToSend = {
-            //     temp: buf.toString()
-            // };
-            //
+            var obj = JSON.parse(message.message);
+            var buf = new Buffer(obj.data, 'base64');
+            var currentValue = parseInt(buf.toString('HEX'), 16);
+
+            var objectToSend = {
+                counter: currentValue
+            };
+
+            accumulatedValue += currentValue;
+
+            pubnub.publish(
+              {
+                  message: {
+                      accumulatedValue: accumulatedValue
+                  },
+                  channel: 'accumulatedValueChannel'
+              },
+              function (status, response) {
+                  if (status.error) {
+                      console.log(status)
+                  } else {
+                      console.log("message Published w/ timetoken", response.timetoken)
+                  }
+              }
+            );
+
             // // var options_auth = { user: username, password: token };
             // var client = new Client();
             //
@@ -58,17 +76,10 @@ function publish() {
             console.log("presence event");
         }
     })
-    console.log("Subscribing..");
+
     pubnub.subscribe({
-        channels: ['Tele2Uplink']
+        channels: ['counterIoTUplink']
     });
 };
 
-/* GET home page. */
-router.get('/', function(req, res, next) {
-    publish();
-
-    res.render('index', { title: 'ejs' });
-});
-
-module.exports = router;
+module.exports = publish;

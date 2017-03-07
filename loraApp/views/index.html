@@ -1,74 +1,7 @@
-<script type="text/javascript" src="https://pubnub.github.io/eon/v/eon/1.0.0/eon.js"></script>
-<link type="text/css" rel="stylesheet" href="https://pubnub.github.io/eon/v/eon/1.0.0/eon.css"/>
-<script type='text/javascript' src="bundle.js"></script>
-<script async defer
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBJBu4qrHYYH3dTCjYBIikQOM0TA1BJYEE&callback=initMap">
-</script>
-
 <html>
-  <style>
-    /* Always set the map height explicitly to define the size of the div
-     * element that contains the map. */
-    #map {
-      height: 100%;
-    }
-    /* Optional: Makes the sample page fill the window. */
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
-  </style>
   <body>
-    <div id="chart"></div>
-    <div id="map"></div>
-
-    <script type='text/javascript'>
-      updateChart();
-
-      function initMap() {
-        var myLatLng = {lat: 57.711, lng: 11.954};
-
-        var map = new google.maps.Map(document.getElementById('map'), {
-          zoom: 13,
-          center: myLatLng
-        });
-
-        var marker = new google.maps.Marker({
-          position: myLatLng,
-          map: map,
-          title: 'Hello World!'
-        });
-
-        // setInterval(function() {
-          var pn = new PubNub({
-            subscribeKey : 'sub-c-66a216ea-f298-11e6-af0f-0619f8945a4f'
-          });
-
-          pn.addListener({
-            status: function(statusEvent) {
-                if (statusEvent.category === "handleData") {
-                    console.log("handle data");
-                }
-            },
-            message: function(message) {
-                myLatLng.lat =  myLatLng.lat + 1;
-                myLatLng.lng =  myLatLng.lng + 1;
-                position = new google.maps.LatLng(myLatLng.lat, myLatLng.lng);
-                marker.setPosition(position);
-
-            },
-            presence: function(presenceEvent) {
-                console.log("presence event");
-            }
-          })
-
-          pn.subscribe({
-              channels: ['Tele2Uplink']
-          });
-        // }, 1000);
-      }
-      // updateMap();
-    </script>
+    <a href="counter.html">Counter IoT Demo</a>
+    <br><br><br><br>
+    <a href="bike.html">Bike IoT Demo</a>
   </body>
 </html>
