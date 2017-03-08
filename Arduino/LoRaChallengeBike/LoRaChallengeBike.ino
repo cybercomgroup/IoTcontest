@@ -6,6 +6,10 @@
 #include <Sodaq_RN2483.h>
 #include <Sodaq_wdt.h>
 #include <RTCZero.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_LSM9DS0.h>
 #include "leds.h"
 #include "gps.h"
 #include "lora.h"
@@ -18,15 +22,24 @@
 #define LORA Serial2
 #define LORA_BAUDRATE LoRaBee.getDefaultBaudRate()
 #define SPIN_INTERRUPT  8
-#define SPIN_LED        7
-#define GPS_LED         6
+#define EXT_LED_RED        7
+#define EXT_LED_GREEN         6
 #define GPS_DATA_PORT   100
 #define SPINS_DATA_PORT 101
 #define REGISTRATION_PORT 102
+#define FALL_PORT 103
+
+/* AccGyroMag Sensor */
+Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(1000);
+#define LSM9DS0_XM_CS 10
+#define LSM9DS0_GYRO_CS 9
+#define LSM9DS0_SCLK 13
+#define LSM9DS0_MISO 12
+#define LSM9DS0_MOSI 11
 
 /* Global vars */
-boolean spin_led_on = false;
-boolean gps_led_on = false;
+boolean EXT_LED_RED_on = false;
+boolean EXT_LED_GREEN_on = false;
 String gps_message = "";
 String gps_buffer = "";
 int gps_buffer_size = 0;
@@ -36,6 +49,7 @@ gps_data_t gps_data;
 lora_connection_t lora_connection;
 boolean task_send_spins = false;
 boolean task_send_gps = false;
+int fall_counter = 0;
 
 
 /* Setup Functions. */
@@ -46,6 +60,7 @@ void setup() {
   setupInterrupts();
   setupRTC();
   setupSerialPorts();
+  setupSensors();
   DEBUG.println("[LoRa Challenge Bike Condition Monitoring]");
   DEBUG.println("setup.LoRa");
 
@@ -73,8 +88,8 @@ void setupVars() {
 }
 
 void setupIOs() {
-  pinMode(SPIN_LED, OUTPUT);
-  pinMode(GPS_LED, OUTPUT);
+  pinMode(EXT_LED_RED, OUTPUT);
+  pinMode(EXT_LED_GREEN, OUTPUT);
   pinMode(SPIN_INTERRUPT, INPUT_PULLDOWN);
 }
 
@@ -100,6 +115,37 @@ void setupSerialPorts() {
   LORA.begin(LORA_BAUDRATE);
 }
 
+void setupSensors() {
+  /* Initialise the sensor */
+  if(!lsm.begin())
+  {
+    /* There was a problem detecting the LSM9DS0 ... check your connections */
+    DEBUG.print(F("Ooops, no LSM9DS0 detected ... Check your wiring or I2C ADDR!"));
+    blink_EXT_LED_RED();
+    while(1);
+  }
+  DEBUG.println(F("LSM9DS0 9DOF Connected!"));
+  printSensorDetails();
+
+  // 1.) Set the accelerometer range
+  lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_2G);
+  //lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_4G);
+  //lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_6G);
+  //lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_8G);
+  //lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_16G);
+
+  // 2.) Set the magnetometer sensitivity
+  lsm.setupMag(lsm.LSM9DS0_MAGGAIN_2GAUSS);
+  //lsm.setupMag(lsm.LSM9DS0_MAGGAIN_4GAUSS);
+  //lsm.setupMag(lsm.LSM9DS0_MAGGAIN_8GAUSS);
+  //lsm.setupMag(lsm.LSM9DS0_MAGGAIN_12GAUSS);
+
+  // 3.) Setup the gyroscope
+  lsm.setupGyro(lsm.LSM9DS0_GYROSCALE_245DPS);
+  //lsm.setupGyro(lsm.LSM9DS0_GYROSCALE_500DPS);
+  //lsm.setupGyro(lsm.LSM9DS0_GYROSCALE_2000DPS);
+}
+
 lora_connection_t setupLoRa() {
   WHITE;
   if (LoRaBee.initOTA(LORA, OTA_configuration.DevEUI, OTA_configuration.AppEUI, OTA_configuration.AppKey, true))
@@ -109,9 +155,50 @@ lora_connection_t setupLoRa() {
   return not_connected;
 }
 
+
+
 /* Loop functions.  */
 void loop() {
-  delay(10);
+
+  sensors_event_t accel, mag, gyro, temp;
+  lsm.getEvent(&accel, &mag, &gyro, &temp);
+
+  /*DEBUG.print("Accel X: "); DEBUG.print(accel.acceleration.x); DEBUG.print(" ");
+  DEBUG.print("  \tY: "); DEBUG.print(accel.acceleration.y);       DEBUG.print(" ");
+  DEBUG.print("  \tZ: "); DEBUG.print(accel.acceleration.z);     DEBUG.println("  \tm/s^2");
+*/
+  // print out magnetometer data
+  /*DEBUG.print("Magn. X: "); DEBUG.print(mag.magnetic.x); DEBUG.print(" ");
+  DEBUG.print("  \tY: "); DEBUG.print(mag.magnetic.y);       DEBUG.print(" ");
+  DEBUG.print("  \tZ: "); DEBUG.print(mag.magnetic.z);     DEBUG.println("  \tgauss");
+
+  // print out gyroscopic data
+  DEBUG.print("Gyro  X: "); DEBUG.print(gyro.gyro.x); DEBUG.print(" ");
+  DEBUG.print("  \tY: "); DEBUG.print(gyro.gyro.y);       DEBUG.print(" ");
+  DEBUG.print("  \tZ: "); DEBUG.print(gyro.gyro.z);     DEBUG.println("  \tdps");
+
+  // print out temperature data
+  DEBUG.print("Temp: "); DEBUG.print(temp.temperature); DEBUG.println(" *C");
+
+  DEBUG.println("**********************\n");*/
+
+  if (accel.acceleration.z < 5) {
+    fall_counter++;
+    if (fall_counter > 100) {
+      fall_counter = 0;
+      sendFall();
+    }
+    DEBUG.println("FALL detected!");
+    DEBUG.println(fall_counter,10);
+    blink_EXT_LED_RED();
+  } else {
+    fall_counter = 0;
+    EXT_LED_RED_on = false;
+    digitalWrite(EXT_LED_RED, LOW);
+  }
+
+
+  delay(100);
   LED_OFF;
   if (lora_connection == not_connected) RED;
   if (task_send_spins) {
@@ -137,7 +224,7 @@ void analyzeNMEA(void) {
 
 void parseGPGGA() {
   //DEBUG.print(gps_message);
-  blink_gps_led();
+  //blink_EXT_LED_GREEN();
   int comma=0, comma_position = 0, satellites, gpsTime, latG, latM, lonG, lonM;
   float latS, lonS;
   boolean north, east;
@@ -241,8 +328,13 @@ void sendRegistration() {
   sendMessage(regMsg, REGISTRATION_PORT);
 }
 
+void sendFall() {
+  String fallMsg = "{\"fall\":true,\"la\":"+String(gps_data.latitude,14)+",\"lo\":"+String(gps_data.longitude,14)+"}";
+  sendMessage(fallMsg, FALL_PORT);
+}
+
 void sendGPS() {
-  String gpsMsg = "{\"la\":\""+String(gps_data.latitude,14)+"\",\"lo\":\""+String(gps_data.longitude,14)+"\"}";
+  String gpsMsg = "{\"la\":"+String(gps_data.latitude,14)+",\"lo\":"+String(gps_data.longitude,14)+"}";
   sendMessage(gpsMsg, GPS_DATA_PORT);
 }
 
@@ -299,18 +391,66 @@ void printStatusReport() {
   DEBUG.print("\n");
 }
 
-void blink_spin_led() {
-  DEBUG.println("spin");
-  spin_led_on = !spin_led_on;
-  if (spin_led_on) digitalWrite(SPIN_LED, HIGH);
-  else digitalWrite(SPIN_LED, LOW);
+void printSensorDetails(void)
+{
+  sensor_t accel, mag, gyro, temp;
+
+  lsm.getSensor(&accel, &mag, &gyro, &temp);
+
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.print  (F("Sensor:       ")); DEBUG.println(accel.name);
+  DEBUG.print  (F("Driver Ver:   ")); DEBUG.println(accel.version);
+  DEBUG.print  (F("Unique ID:    ")); DEBUG.println(accel.sensor_id);
+  /*/DEBUG.print  (F("Max Value:    ")); DEBUG.print(accel.max_value); DEBUG.println(F(" m/s^2"));
+  DEBUG.print  (F("Min Value:    ")); DEBUG.print(accel.min_value); DEBUG.println(F(" m/s^2"));
+  DEBUG.print  (F("Resolution:   ")); DEBUG.print(accel.resolution); DEBUG.println(F(" m/s^2"));*/
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.println(F(""));
+
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.print  (F("Sensor:       ")); DEBUG.println(mag.name);
+  DEBUG.print  (F("Driver Ver:   ")); DEBUG.println(mag.version);
+  DEBUG.print  (F("Unique ID:    ")); DEBUG.println(mag.sensor_id);
+  /*DEBUG.print  (F("Max Value:    ")); DEBUG.print(mag.max_value); DEBUG.println(F(" uT"));
+  DEBUG.print  (F("Min Value:    ")); DEBUG.print(mag.min_value); DEBUG.println(F(" uT"));
+  DEBUG.print  (F("Resolution:   ")); DEBUG.print(mag.resolution); DEBUG.println(F(" uT"));*/
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.println(F(""));
+
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.print  (F("Sensor:       ")); DEBUG.println(gyro.name);
+  DEBUG.print  (F("Driver Ver:   ")); DEBUG.println(gyro.version);
+  DEBUG.print  (F("Unique ID:    ")); DEBUG.println(gyro.sensor_id);
+  /*DEBUG.print  (F("Max Value:    ")); DEBUG.print(gyro.max_value); DEBUG.println(F(" rad/s"));
+  DEBUG.print  (F("Min Value:    ")); DEBUG.print(gyro.min_value); DEBUG.println(F(" rad/s"));
+  DEBUG.print  (F("Resolution:   ")); DEBUG.print(gyro.resolution); DEBUG.println(F(" rad/s"));*/
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.println(F(""));
+
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.print  (F("Sensor:       ")); DEBUG.println(temp.name);
+  DEBUG.print  (F("Driver Ver:   ")); DEBUG.println(temp.version);
+  DEBUG.print  (F("Unique ID:    ")); DEBUG.println(temp.sensor_id);
+  /*DEBUG.print  (F("Max Value:    ")); DEBUG.print(temp.max_value); DEBUG.println(F(" C"));
+  DEBUG.print  (F("Min Value:    ")); DEBUG.print(temp.min_value); DEBUG.println(F(" C"));
+  DEBUG.print  (F("Resolution:   ")); DEBUG.print(temp.resolution); DEBUG.println(F(" C"));*/
+  DEBUG.println(F("------------------------------------"));
+  DEBUG.println(F(""));
+
+  delay(500);
+}
+
+void blink_EXT_LED_RED() {
+  EXT_LED_RED_on = !EXT_LED_RED_on;
+  if (EXT_LED_RED_on) digitalWrite(EXT_LED_RED, HIGH);
+  else digitalWrite(EXT_LED_RED, LOW);
 }
 
 
-void blink_gps_led() {
-  gps_led_on = !gps_led_on;
-  if (gps_led_on) digitalWrite(GPS_LED, HIGH);
-  else digitalWrite(GPS_LED, LOW);
+void blink_EXT_LED_GREEN() {
+  EXT_LED_GREEN_on = !EXT_LED_GREEN_on;
+  if (EXT_LED_GREEN_on) digitalWrite(EXT_LED_GREEN, HIGH);
+  else digitalWrite(EXT_LED_GREEN, LOW);
 }
 
 /* Interruptions */
@@ -336,7 +476,7 @@ void _INT_GPS() {
 
 void _INT_SPIN_WHEEL() {
   BLUE;
-  blink_spin_led();
+  blink_EXT_LED_GREEN();
   spin_counter++;
 }
 
