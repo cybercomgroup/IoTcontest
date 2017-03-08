@@ -20,7 +20,8 @@ int time;
 uint8_t countBtDevices;
 
 void setup()
-{  
+{
+  pinMode(LED_BUILTIN, OUTPUT);
   while ((!debugSerial) && (millis() < 10000));
 
   debugSerial.begin(57600);
@@ -34,7 +35,10 @@ void setup()
   LoRaBee.setDiag(debugSerial); // To get debug information, uncomment #define DEBUG in .cpp in library
   
   
-  setupLoRa();
+  while(!setupLoRa()) //Retry until true is returned
+  {
+    debugSerial.println("Failed to setup LoRaWAN, trying again");
+  }
   setupBT();
 
 }
@@ -42,10 +46,11 @@ void setup()
 void loop()
 {
   countBtDevices = 0;
-  rn487xBle.startScanning(16000, 16000);
+  rn487xBle.startScanning();
   time = millis();
   while(1)
   {
+    digitalWrite(LED_BUILTIN, HIGH);
     if(bleSerial.available())
     {
       char x = (char)bleSerial.read();
@@ -56,12 +61,13 @@ void loop()
       }
     }
 
-    if(millis() >= time + 15000) //Scan for x milliseconds and then sends message
+    if(millis() >= time + 60000) //Scan for x milliseconds and then sends message
     {
       countBtDevices--;
       break;
     }
   }
+  digitalWrite(LED_BUILTIN, LOW);
   rn487xBle.stopScanning();
   
   debugSerial.println("Message(" + String(sizeof(countBtDevices)) + " bytes): " + countBtDevices);
@@ -115,10 +121,6 @@ boolean setupLoRa()
   {
     debugSerial.println("Finished setting up LorRaWAN");
     return true;
-  }
-  else
-  {
-    debugSerial.println("Failed to setup LoRaWAN");
   }
 
   return false;
