@@ -1,7 +1,7 @@
 /*
   LoRa Challenge Bike Condition Monitoring
   @author: Pablo Puñal Pereira <pablo.punal@cybercom.com>
-  @date: February 2017
+  @date: March 2017
 */
 #include <Sodaq_RN2483.h>
 #include <Sodaq_wdt.h>
@@ -21,13 +21,13 @@
 #define GPS_BAUDRATE 9600
 #define LORA Serial2
 #define LORA_BAUDRATE LoRaBee.getDefaultBaudRate()
-#define SPIN_INTERRUPT  8
-#define EXT_LED_RED        7
-#define EXT_LED_GREEN         6
-#define GPS_DATA_PORT   100
-#define SPINS_DATA_PORT 101
-#define REGISTRATION_PORT 102
-#define FALL_PORT 103
+#define SPIN_INTERRUPT      8
+#define EXT_LED_GREEN       11
+#define EXT_LED_RED         10
+#define GPS_DATA_PORT       100
+#define SPINS_DATA_PORT     101
+#define REGISTRATION_PORT   102
+#define FALL_PORT           103
 
 /* AccGyroMag Sensor */
 Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(1000);
@@ -37,9 +37,13 @@ Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(1000);
 #define LSM9DS0_MISO 12
 #define LSM9DS0_MOSI 11
 
-/* Global vars */
-boolean EXT_LED_RED_on = false;
-boolean EXT_LED_GREEN_on = false;
+/* PWM LEDs */
+int pwm_counter_green = 0;
+int pwm_increment_green = SLOPE_POSITIVE;
+int pwm_counter_red = 0;
+int pwm_increment_red = SLOPE_POSITIVE;
+
+/* Global Vars*/
 String gps_message = "";
 String gps_buffer = "";
 int gps_buffer_size = 0;
@@ -50,17 +54,20 @@ lora_connection_t lora_connection;
 boolean task_send_spins = false;
 boolean task_send_gps = false;
 int fall_counter = 0;
-
+boolean ERROR = false;
+boolean FALL = false;
 
 /* Setup Functions. */
 void setup() {
   setupVars();
   setupIOs();
-  LED_OFF;
+  leds_status(BRIGHT_100, BRIGHT_100);
   setupInterrupts();
   setupRTC();
   setupSerialPorts();
+  leds_status(BRIGHT_100, BRIGHT_25);
   setupSensors();
+  leds_status(BRIGHT_25, BRIGHT_100);
   DEBUG.println("[LoRa Challenge Bike Condition Monitoring]");
   DEBUG.println("setup.LoRa");
 
@@ -78,8 +85,9 @@ void setup() {
       DEBUG.println("Unexpected LoRa status");
       break;
   }
-
+  leds_status(BRIGHT_100, BRIGHT_25);
   sendRegistration();
+  leds_status(BRIGHT_0, BRIGHT_0);
 }
 
 void setupVars() {
@@ -88,9 +96,9 @@ void setupVars() {
 }
 
 void setupIOs() {
-  pinMode(EXT_LED_RED, OUTPUT);
-  pinMode(EXT_LED_GREEN, OUTPUT);
   pinMode(SPIN_INTERRUPT, INPUT_PULLDOWN);
+  pinMode(EXT_LED_GREEN, OUTPUT);
+  pinMode(EXT_LED_RED, OUTPUT);
 }
 
 void setupInterrupts() {
@@ -121,11 +129,11 @@ void setupSensors() {
   {
     /* There was a problem detecting the LSM9DS0 ... check your connections */
     DEBUG.print(F("Ooops, no LSM9DS0 detected ... Check your wiring or I2C ADDR!"));
-    blink_EXT_LED_RED();
+    leds_status(BRIGHT_0, BRIGHT_100);
     while(1);
   }
   DEBUG.println(F("LSM9DS0 9DOF Connected!"));
-  printSensorDetails();
+  //printSensorDetails();
 
   // 1.) Set the accelerometer range
   lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_2G);
@@ -147,67 +155,65 @@ void setupSensors() {
 }
 
 lora_connection_t setupLoRa() {
-  WHITE;
+  ERROR = false;
   if (LoRaBee.initOTA(LORA, OTA_configuration.DevEUI, OTA_configuration.AppEUI, OTA_configuration.AppKey, true))
     return ota_connected;
   if (LoRaBee.initABP(LORA, ABP_configuration.DevAddr, ABP_configuration.AppSKey, ABP_configuration.NwkSKey, true))
     return abp_connected;
+  ERROR = true;
   return not_connected;
 }
 
 
 
-/* Loop functions.  */
-void loop() {
 
+void loop() {
+  // green led
+  pwm_counter_green += pwm_increment_green;
+  if (pwm_counter_green >= BRIGHT_25) pwm_increment_green = SLOPE_NEGATIVE;
+  if (pwm_counter_green <= BRIGHT_0) pwm_increment_green = SLOPE_POSITIVE;
+  analogWrite(EXT_LED_GREEN, pwm_counter_green);
+  // red led
+  if (ERROR || FALL) {
+    pwm_counter_red += pwm_increment_red;
+    if (pwm_counter_red >= BRIGHT_25) pwm_increment_red = SLOPE_NEGATIVE;
+    if (pwm_counter_red <= BRIGHT_0) pwm_increment_red = SLOPE_POSITIVE;
+    analogWrite(EXT_LED_RED, pwm_counter_red);
+  } else {
+    analogWrite(EXT_LED_RED, BRIGHT_0);
+  }
+  // Sensors
   sensors_event_t accel, mag, gyro, temp;
   lsm.getEvent(&accel, &mag, &gyro, &temp);
 
-  /*DEBUG.print("Accel X: "); DEBUG.print(accel.acceleration.x); DEBUG.print(" ");
-  DEBUG.print("  \tY: "); DEBUG.print(accel.acceleration.y);       DEBUG.print(" ");
-  DEBUG.print("  \tZ: "); DEBUG.print(accel.acceleration.z);     DEBUG.println("  \tm/s^2");
-*/
-  // print out magnetometer data
-  /*DEBUG.print("Magn. X: "); DEBUG.print(mag.magnetic.x); DEBUG.print(" ");
-  DEBUG.print("  \tY: "); DEBUG.print(mag.magnetic.y);       DEBUG.print(" ");
-  DEBUG.print("  \tZ: "); DEBUG.print(mag.magnetic.z);     DEBUG.println("  \tgauss");
-
-  // print out gyroscopic data
-  DEBUG.print("Gyro  X: "); DEBUG.print(gyro.gyro.x); DEBUG.print(" ");
-  DEBUG.print("  \tY: "); DEBUG.print(gyro.gyro.y);       DEBUG.print(" ");
-  DEBUG.print("  \tZ: "); DEBUG.print(gyro.gyro.z);     DEBUG.println("  \tdps");
-
-  // print out temperature data
-  DEBUG.print("Temp: "); DEBUG.print(temp.temperature); DEBUG.println(" *C");
-
-  DEBUG.println("**********************\n");*/
-
   if (accel.acceleration.z < 5) {
     fall_counter++;
-    if (fall_counter > 100) {
+    FALL = true;
+    if (fall_counter > 1000) {
       fall_counter = 0;
       sendFall();
     }
-    DEBUG.println("FALL detected!");
-    DEBUG.println(fall_counter,10);
-    blink_EXT_LED_RED();
   } else {
     fall_counter = 0;
-    EXT_LED_RED_on = false;
-    digitalWrite(EXT_LED_RED, LOW);
+    FALL = false;
+
   }
 
-
-  delay(100);
-  LED_OFF;
-  if (lora_connection == not_connected) RED;
   if (task_send_spins) {
     sendSpins();
     task_send_spins = false;
   }
+
+  delay(10);
 }
 
+
 /* Helpers */
+void leds_status(int green, int red) {
+  analogWrite(EXT_LED_GREEN, green);
+  analogWrite(EXT_LED_RED, red);
+}
+
 void analyzeNMEA(void) {
   String prefix = gps_message.substring(1,6);
   if (prefix == "GPRMC") {
@@ -223,8 +229,6 @@ void analyzeNMEA(void) {
 }
 
 void parseGPGGA() {
-  //DEBUG.print(gps_message);
-  //blink_EXT_LED_GREEN();
   int comma=0, comma_position = 0, satellites, gpsTime, latG, latM, lonG, lonM;
   float latS, lonS;
   boolean north, east;
@@ -293,18 +297,16 @@ boolean sendMessage(String message2send, int portNumber) {
   DEBUG.println(message);
   if (lora_connection == not_connected)
     lora_connection = setupLoRa();
-    else
-  DEBUG.println("Already connected");
+  else
+    DEBUG.println("Already connected");
 
   boolean res = false;
   switch (LoRaBee.send(portNumber, (const uint8_t*)message.c_str(), message.length())) {
     case NoError:
-      GREEN;
       DEBUG.println("Message sent");
       res = true;
       break;
     default:
-      RED;
       DEBUG.println("Error -> reconnect next time");
       lora_connection = not_connected;
       res = false;
@@ -437,20 +439,6 @@ void printSensorDetails(void)
   DEBUG.println(F("------------------------------------"));
   DEBUG.println(F(""));
 
-  delay(500);
-}
-
-void blink_EXT_LED_RED() {
-  EXT_LED_RED_on = !EXT_LED_RED_on;
-  if (EXT_LED_RED_on) digitalWrite(EXT_LED_RED, HIGH);
-  else digitalWrite(EXT_LED_RED, LOW);
-}
-
-
-void blink_EXT_LED_GREEN() {
-  EXT_LED_GREEN_on = !EXT_LED_GREEN_on;
-  if (EXT_LED_GREEN_on) digitalWrite(EXT_LED_GREEN, HIGH);
-  else digitalWrite(EXT_LED_GREEN, LOW);
 }
 
 /* Interruptions */
@@ -459,7 +447,6 @@ void serialEventRun(void) {
 }
 
 void _INT_GPS() {
-  GREEN;
   while(GPS.available()) {
     char inChar = GPS.read();
     //DEBUG.print(inChar);
@@ -475,9 +462,8 @@ void _INT_GPS() {
 }
 
 void _INT_SPIN_WHEEL() {
-  BLUE;
-  blink_EXT_LED_GREEN();
   spin_counter++;
+  analogWrite(EXT_LED_GREEN, BRIGHT_100);
 }
 
 int rtc_counter = 0;

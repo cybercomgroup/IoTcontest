@@ -1,39 +1,12 @@
 #ifndef _leds_h_
 #define _leds_h_
 
-#define RED \
-do { \
-  digitalWrite(LED_RED, LOW);\
-  digitalWrite(LED_GREEN, HIGH);\
-  digitalWrite(LED_BLUE, HIGH); \
-} while (0)
-
-#define BLUE \
-do { \
-  digitalWrite(LED_RED, HIGH);\
-  digitalWrite(LED_GREEN, HIGH);\
-  digitalWrite(LED_BLUE, LOW); \
-} while (0)
-
-#define GREEN \
-do { \
-  digitalWrite(LED_RED, HIGH);\
-  digitalWrite(LED_GREEN, LOW);\
-  digitalWrite(LED_BLUE, HIGH); \
-} while (0)
-
-#define WHITE \
-do { \
-  digitalWrite(LED_RED, LOW);\
-  digitalWrite(LED_GREEN, LOW);\
-  digitalWrite(LED_BLUE, LOW); \
-} while (0)
-
-#define LED_OFF \
-do { \
-  digitalWrite(LED_RED, HIGH);\
-  digitalWrite(LED_GREEN, HIGH);\
-  digitalWrite(LED_BLUE, HIGH); \
-} while (0)
+#define SLOPE_POSITIVE 1
+#define SLOPE_NEGATIVE -1
+#define BRIGHT_0    0
+#define BRIGHT_25   64
+#define BRIGHT_50   128
+#define BRIGHT_75   191
+#define BRIGHT_100  255
 
 #endif /*_leds_h_*/
