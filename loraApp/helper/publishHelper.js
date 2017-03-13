@@ -13,73 +13,83 @@ const auth = "Basic " + new Buffer(username + ":" + token).toString("base64");
 
 function publish() {
 
-    console.log("Subscribing..");
-    var accumulatedValue = 0;
+  console.log("Subscribing..");
+  var accumulatedValue = 0;
+  var prevSpins = 0;
+  var prevTime = new Date().getTime();
 
-    var pubnub = new PubNub({
-        publishKey : process.env.PUBNUB_PUBLISH_KEY,
-        subscribeKey : process.env.PUBNUB_SUBSCRIBE_KEY
-    })
+  var pubnub = new PubNub({
+      publishKey : process.env.PUBNUB_PUBLISH_KEY,
+      subscribeKey : process.env.PUBNUB_SUBSCRIBE_KEY
+  })
 
-    pubnub.addListener({
-        status: function(statusEvent) {
-            if (statusEvent.category === "handleData") {
-                console.log("handle data");
-            }
-        },
-        message: function(message) {
-
-            var obj = JSON.parse(message.message);
-            var buf = new Buffer(obj.data, 'base64');
-            var currentValue = parseInt(buf.toString('HEX'), 16);
-
-            var objectToSend = {
-                counter: currentValue
-            };
-
-            accumulatedValue += currentValue;
-
-            pubnub.publish(
-              {
-                  message: {
-                      accumulatedValue: accumulatedValue
-                  },
-                  channel: 'accumulatedValueChannel'
-              },
-              function (status, response) {
-                  if (status.error) {
-                      console.log(status)
-                  } else {
-                      console.log("message Published w/ timetoken", response.timetoken)
-                  }
-              }
-            );
-
-            // // var options_auth = { user: username, password: token };
-            // var client = new Client();
-            //
-            // // set content-type header and data as json in args parameter
-            // var args = {
-            //     data: objectToSend,
-            //     headers: {
-            //       "Content-Type": "application/json",
-            //       "Authorization": auth
-            //     }
-            // };
-            //
-            // client.post(url, args, function (data, response) {
-            //     // parsed response body as js object
-            //     console.log(response.statusCode);
-            // });
-        },
-        presence: function(presenceEvent) {
-            console.log("presence event");
+  pubnub.addListener({
+    status: function(statusEvent) {
+        if (statusEvent.category === "handleData") {
+            console.log("handle data");
         }
-    })
+    },
+    message: function(message) {
+      var obj = JSON.parse(message.message);
+      var buf = new Buffer(obj.data, 'base64');
+      obj = JSON.parse(buf.toString());
 
-    pubnub.subscribe({
-        channels: ['counterIoTUplink']
-    });
+      if (obj.spins) {
+        var now = new Date().getTime();
+        var timeDiff = now - prevTime;
+        if (prevSpins === parseInt(obj.spins) && timeDiff < 1000 ) {
+          return;
+        }
+
+        prevSpins = parseInt(obj.spins);
+        prevTime = now;
+        accumulatedValue += parseInt(obj.spins);
+        pubnub.publish(
+          {
+            message: {
+                accumulatedValue: accumulatedValue
+            },
+            channel: 'bikeAccumulatedValueChannel'
+          },
+          function (status, response) {
+            if (status.error) {
+                console.log(status)
+            } else {
+                console.log("message Published w/ timetoken", response.timetoken)
+            }
+          }
+        );
+      }
+
+      // var objectToSend = {
+      //     counter: currentValue
+      // };
+
+      // // var options_auth = { user: username, password: token };
+      // var client = new Client();
+      //
+      // // set content-type header and data as json in args parameter
+      // var args = {
+      //     data: objectToSend,
+      //     headers: {
+      //       "Content-Type": "application/json",
+      //       "Authorization": auth
+      //     }
+      // };
+      //
+      // client.post(url, args, function (data, response) {
+      //     // parsed response body as js object
+      //     console.log(response.statusCode);
+      // });
+    },
+    presence: function(presenceEvent) {
+      console.log("presence event");
+    }
+  })
+
+  pubnub.subscribe({
+    channels: ['bikeIoTUplink']
+  });
 };
 
 module.exports = publish;

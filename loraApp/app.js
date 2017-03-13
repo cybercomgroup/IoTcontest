@@ -5,7 +5,7 @@ var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var dotenv = require('dotenv');
-var publish = require('./helper/publishHelper');
+var publishAccumulatedChannel = require('./helper/publishHelper');
 var app = express();
 
 // Load environment variables from .env file,
@@ -26,7 +26,7 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '/services/build')));
 app.use(express.static(path.join(__dirname, '/views')));
 
-publish();
+publishAccumulatedChannel();
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
